@@ -1,0 +1,50 @@
+# -*- coding: utf8 -*-
+import sys
+import time 
+import threading
+from pywebsocketserver.server import SocketServer
+from pywebsocketserver.baseio import BaseIO
+import subprocess
+
+
+def tcpdump():  
+    global g_output_log
+    popen=subprocess.Popen(['bash','-c',"/usr/sbin/tcpdump -i eth0 -v"],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    pid=popen.pid
+    print('Popen.pid:'+str(pid))  
+    while True:  
+        line=popen.stdout.readline().strip()
+        #line =popen.communicate()
+        print "output:%s" %(line)
+        g_output_log.append(line)
+        if subprocess.Popen.poll(popen) is not None:  
+                break
+    print('DONE')  
+    
+
+class MyIO(BaseIO):
+    def onData(self,uid,text):
+        self.sendData(uid,"received the message：%s"%(text,))
+    def onConnect(self,uid):
+        global g_uid
+        g_uid=uid
+        while True:
+            #self.sendData(uid,"testing...")
+            if  len(g_output_log) >0:
+                log = g_output_log.pop()
+                self.sendData(uid,log)
+            else:
+                time.sleep(.01)
+
+try:
+    g_output_log=[]
+    g_uid=None
+    tcpdump = threading.Thread(name='tcpdump', target=tcpdump)
+    tcpdump.start()        
+    port = sys.argv[1]
+except:
+    port = 88
+
+port = int(port)
+myIo = MyIO()
+SocketServer(port,myIo).run()    

@@ -1,0 +1,11 @@
+<p id="m{{ message["id"] }}">
+    <span class="stream color2">
+        nginx
+    </span>
+    <span class="node color1">
+        logio_webserver01
+    </span>
+    <span class="message">
+        {% module linkify(message["body"]) %}
+    </span>
+</p>

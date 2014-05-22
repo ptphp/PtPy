@@ -1,0 +1,392 @@
+# Add external css file to webkit
+self.view.settings().setUserStyleSheetUrl(QtCore.QUrl.fromLocalFile("selectElem.css"))
+ 
+# Add Local QObject and expose its slots and properties to JavaScript Context 
+self.view.page().currentFrame().addToJavaScriptWindowObject('htmlTextEdit', self.htmlTextEdit)
+ 
+# Load Local jquery file to webkit
+jqueryfile = QtCore.QFile("jquery-1.10.2.min.js");
+jqueryfile.open(QtCore.QIODevice.ReadOnly | QtCore.QIODevice.Text);
+jQueryJs = jqueryfile.readAll().data();
+jqueryfile.close();
+ 
+# webkit execute external js file
+self.view.page().currentFrame().evaluateJavaScript(jQueryJs)
+ 
+code = "var flag2 = null;\
+    $().ready(function(){\
+          $('*').click(function(){\
+           if(flag2 != null){\
+               flag2.removeClass('elemselected');\
+               }\
+               flag2 = $(this);\
+               htmlTextEdit.setPlainText($(this).html());\
+           $(this).addClass('elemselected');\
+           return false;\
+          });\
+    }); null;"
+ 
+# webkit execute js code        
+self.view.page().mainFrame().evaluateJavaScript(code)
+
+
+QByteArray css("div { background-color: red }");
+
+    // that's  works fine
+    //view.settings()->setUserStyleSheetUrl(QUrl("data:text/css;charset=utf-8;base64," + css.toBase64())); 
+
+
+websettings = QtWebKit.QWebSettings.globalSettings()
+        styles = b"body {font-family: sans-serif;}"
+        stylesheet = "data:text/css;charset=utf-8;base64," + b64encode(styles).decode('ascii')
+        websettings.setUserStyleSheetUrl(QtCore.QUrl(stylesheet))
+
+
+
+
+
+from PySide.QtCore import *
+from PySide.QtGui import *
+from PySide.QtWebKit import *
+import json
+
+class service(QObject):
+    @Slot(str, str, result=str)
+    def fetch(self, path, data):
+        path = path.replace('/', '.')
+        lastdotidx = path.rindex('.')
+        modulepath = path[:lastdotidx]
+        funcname = path[lastdotidx+1:]
+        params = json.loads(data)
+        targetmodule =  __import__(modulepath)
+        targetfunc = getattr(targetmodule, funcname)
+        if isinstance(params, dict):
+            return json.dumps(targetfunc(**params))
+
+@Slot()
+def regist_service():
+    frame.addToJavaScriptWindowObject('__service__', service())
+
+@Slot(str)
+def on_title_changed(title):
+    web.setWindowTitle(title)
+
+app = QApplication('wk')
+
+web = QWebView()
+web.settings().setAttribute(QWebSettings.DeveloperExtrasEnabled, True)
+frame = web.page().mainFrame()
+frame.javaScriptWindowObjectCleared.connect(regist_service)
+web.setUrl(QUrl('index.html'))
+web.titleChanged.connect(on_title_changed)
+web.show()
+
+app.exec_()
+
+
+
+
+
+"""
+
+#coding:utf-8
+
+import sys
+import os
+import time
+import threading
+from PySide import QtCore
+from PySide import QtGui
+import logging
+
+count = 0
+lock = threading.RLock()
+
+
+class Qt_DummyThread(threading.Thread):
+
+    def __init__(self):
+        threading.Thread.__init__(self, name=threading._newname("QThread_%d"))
+
+        # Thread.__block consumes an OS-level locking primitive, which
+        # can never be used by a _DummyThread.  Since a _DummyThread
+        # instance is immortal, that's bad, so release this resource.
+        del self._Thread__block
+
+        self._Thread__started.set()
+        self._set_ident()
+        threading._active_limbo_lock.acquire()
+        threading._active[threading._get_ident()] = self
+        threading._active_limbo_lock.release()
+
+    def _set_daemon(self):
+        return True
+
+    def join(self, timeout=None):
+        assert False, "cannot join a dummy thread"
+
+threading._DummyThread = Qt_DummyThread
+
+def getThreadName():
+    global count
+    with lock:
+        count += 1
+        return str(count)
+
+
+class Thread(QtCore.QThread):
+    def __init__(self):
+        super(Thread, self).__init__()
+        self._th_name = ""
+        
+    def run(self, *args, **kwargs):
+        self._th_name = threading.currentThread().name
+        import random
+        logger = logging.getLogger("thread")
+        for i in range(10):
+            time.sleep(random.random())
+            logger.debug(
+                "this is {0} output ".format(
+                    self._th_name, 
+                )
+            )
+        return
+
+def initialLogging():
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+
+    # create console handler and set level to debug
+    ch = logging.StreamHandler(sys.stdout)
+    ch.setLevel(logging.DEBUG)
+
+    # create formatter
+    formatter = logging.Formatter('%(asctime)s - %(threadName)-12s - %(name)-12s - %(levelname)-8s - %(message)s')
+
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+
+
+class MW(QtGui.QDialog):
+    def __init__(self):
+        super(MW, self).__init__()
+        layout = QtGui.QVBoxLayout()
+        btn = QtGui.QPushButton(self)
+        btn.setText("Click")
+        self.setLayout(layout)
+        layout.addWidget(btn)
+
+        btn.clicked.connect(self.onBtn)
+        
+        self.t = []
+
+    def onBtn(self):
+        t = Thread()
+        t.finished.connect(self.onThreadEnd)
+        t.terminated.connect(self.onThreadEnd)
+        self.t.append(t)
+        t.start()
+        
+    def onThreadEnd(self):
+        for i in self.t:
+            if i.terminated:
+                i.wait()
+                self.t.remove(i)
+                
+    def closeEvent(self, *args, **kwargs):
+        for i in self.t:
+            i.exit()
+            i.wait()
+        return QtGui.QDialog.closeEvent(self, *args, **kwargs)
+
+
+def main():
+    initialLogging()
+    app = QtGui.QApplication([])
+    mw = MW()
+    mw.show()
+    app.exec_()
+
+if __name__ == '__main__':
+    main()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+class OutLog:
+    def __init__(self, edit, out=None, color=None):
+        """(edit, out=None, color=None) -> can write stdout, stderr to a
+        QTextEdit.
+        edit = QTextEdit
+        out = alternate stream ( can be the original sys.stdout )
+        color = alternate color (i.e. color stderr a different color)
+        """
+        self.edit = edit
+        self.out = None
+        self.color = color
+
+    def write(self, m):
+        if self.color:
+            tc = self.edit.textColor()
+            self.edit.setTextColor(self.color)
+
+        self.edit.moveCursor(QtGui.QTextCursor.End)
+        self.edit.insertPlainText( m )
+
+        if self.color:
+            self.edit.setTextColor(tc)
+
+        if self.out:
+            self.out.write(m)
+import sys
+sys.stdout = OutLog( edit, sys.stdout)
+sys.stderr = OutLog( edit, sys.stderr, QtGui.QColor(255,0,0) )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#!/usr/bin/env python2
+
+import sys, time
+from PySide.QtGui import *
+from PySide.QtCore import *
+
+class MySignal(QObject):
+    sig = Signal(str)
+
+class MyLongThread(QThread):
+    def __init__(self, parent = None):
+        QThread.__init__(self, parent)
+        self.exiting = False
+        self.signal = MySignal()
+
+    def run(self):
+        end = time.time()+10
+        while self.exiting==False:
+            sys.stdout.write('*')
+            sys.stdout.flush()
+            time.sleep(1)
+            now = time.time()
+            if now>=end:
+                self.exiting=True
+        self.signal.sig.emit('OK')
+
+class MyThread(QThread):
+    def __init__(self, parent = None):
+        QThread.__init__(self, parent)
+        self.exiting = False
+
+    def run(self):
+        while self.exiting==False:
+            sys.stdout.write('.')
+            sys.stdout.flush()
+            time.sleep(1)
+        
+class MainWindow(QMainWindow):
+    def __init__(self, parent=None):
+        QMainWindow.__init__(self,parent)
+        self.centralwidget = QWidget(self)
+        self.batchbutton = QPushButton('Start batch',self)
+        self.longbutton = QPushButton('Start long (10 seconds) operation',self)
+        self.label1 = QLabel('Continuos batch')
+        self.label2 = QLabel('Long batch')
+        self.vbox = QVBoxLayout()
+        self.vbox.addWidget(self.batchbutton)
+        self.vbox.addWidget(self.longbutton)
+        self.vbox.addWidget(self.label1)
+        self.vbox.addWidget(self.label2)
+        self.setCentralWidget(self.centralwidget)
+        self.centralwidget.setLayout(self.vbox)
+        self.thread = MyThread()
+        self.longthread = MyLongThread()
+        self.batchbutton.clicked.connect(self.handletoggle)
+        self.longbutton.clicked.connect(self.longoperation)
+        self.thread.started.connect(self.started)
+        self.thread.finished.connect(self.finished)
+        self.thread.terminated.connect(self.terminated)
+        self.longthread.signal.sig.connect(self.longoperationcomplete)
+
+    def started(self):
+        self.label1.setText('Continuous batch started')
+
+    def finished(self):
+        self.label1.setText('Continuous batch stopped')
+
+    def terminated(self):
+        self.label1.setText('Continuous batch terminated')
+
+    def handletoggle(self):
+        if self.thread.isRunning():
+            self.thread.exiting=True
+            self.batchbutton.setEnabled(False)
+            while self.thread.isRunning():
+                time.sleep(0.01)
+                continue
+            self.batchbutton.setText('Start batch')
+            self.batchbutton.setEnabled(True)
+        else:
+            self.thread.exiting=False
+            self.thread.start()
+            self.batchbutton.setEnabled(False)
+            while not self.thread.isRunning():
+                time.sleep(0.01)
+                continue
+            self.batchbutton.setText('Stop batch')
+            self.batchbutton.setEnabled(True)
+
+    def longoperation(self):
+        if not self.longthread.isRunning():
+            self.longthread.exiting=False
+            self.longthread.start()
+            self.label2.setText('Long operation started')
+            self.longbutton.setEnabled(False)
+
+    def longoperationcomplete(self,data):
+        self.label2.setText('Long operation completed with: '+data)
+        self.longbutton.setEnabled(True)
+
+if __name__=='__main__':
+    app = QApplication(sys.argv)
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec_())
+
+
+
+
+
+
+
+
+
+
+
+
+"""
+
+  
+
+"""

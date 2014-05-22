@@ -1,0 +1,15 @@
+Flask>=0.10
+
+redis
+python-memcached
+
+# Tests and code coverage
+nose
+coverage
+
+# Documentation
+sphinx
+
+
+# Linter
+flake8
